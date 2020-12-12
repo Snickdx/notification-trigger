@@ -14,7 +14,7 @@ const filesToCache = [
           '/offline.html'
         ];
 
-const staticCacheName = 'pages-cache-v17';
+const staticCacheName = 'pages-cache-v23';
 
 //Setting up precaching
 self.addEventListener('install', async event => {
@@ -52,20 +52,22 @@ async function cacheFirstRequest(request){
         console.log('Cached', cachedResponse);
         return cachedResponse;
       }else{
-        console.loog('not cached, checking network')
-        const newResponse = await fetch(request.url);
+        console.log('not cached, checking network')
+        const newResponse = await fetch(request);
+        const clone = newResponse.clone();
+
+        console.log('Network Response', clone);
         
-        if(response.status == 404){
+        if(clone.status == 404){
           return await caches.match('/404.html');
         }
-
-        cacheResponse(request.url, newResponse);
+        cacheResponse(request.url, clone);
         return newResponse; 
       }
 
     }catch(e){
       //requesting a page offline that is not cached
-      console.log(e);
+      console.log('Error checking cache and network', e);
       return await caches.match('/offline.html');
     }
 
@@ -73,7 +75,7 @@ async function cacheFirstRequest(request){
 
 //Setting up runtime caching, resources not precached would be cached when requested
 self.addEventListener('fetch', event => {
-  console.log('Fetch event for ', event.request.url);
+  // console.log('Fetch event for ', event.request.url);
   // Prevent the default, and handle the request ourselves.
   event.respondWith(cacheFirstRequest(event.request));
 });
