@@ -1,47 +1,79 @@
+//Minimal Precaching & Runtime Caching ServiceWorker
+
+// https://developers.google.com/web/ilt/pwa/caching-files-with-service-worker
+//https://developers.google.com/web/ilt/pwa/lab-caching-files-with-service-worker
+//https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent/respondWith
+//https://developer.mozilla.org/en-US/docs/Web/API/ExtendableEvent/waitUntil
+
 const filesToCache = [
           '/style.css',
           '/script.js',
           '/manifest.json',
           '/icon_512.png',
-          '/index.html'
+          '/index.html',
+          '/offline.html'
         ];
 
-const staticCacheName = 'pages-cache-v1';
+const staticCacheName = 'pages-cache-v17';
 
-// self.addEventListener('install', event => {
-//   console.log('Attempting to install service worker and cache static assets');
-//   event.waitUntil(
-//     caches.open(staticCacheName)
-//     .then(cache => {
-//       return cache.addAll(filesToCache);
-//     })
-//   );
-// });
+//Setting up precaching
+self.addEventListener('install', async event => {
+  console.log('Attempting to install service worker and cache static assets');
+  
+  //create preCache
+  const preCache = async () => {
+    const cache = await caches.open(staticCacheName);
+    return cache.addAll(filesToCache);
+  };
+  
+  //do not finish install until precaching is complete
+  event.waitUntil(preCache());
+});
 
 
-// self.addEventListener('fetch', event => {
-//   console.log('Fetch event for ', event.request.url);
-//   event.respondWith(
-//     caches.match(event.request)
-//       .then(response => {
-//         if (response) {
-//           console.log('Found ', event.request.url, ' in cache');
-//           return response;
-//         }
+//returns a cached response or undefined
+async function checkCache(request){
+  return caches.match(request);
+}
+
+//stores a response in cache
+async function cacheResponse(url, response){
+  const cache = await caches.open(staticCacheName);
+  cache.put(url, response.clone());
+}
+
+//makes a fetch request but checks the cache first
+async function cacheFirstRequest(request){
+
+    try{
+      //requesting a page that is cached or app is online
+      const cachedResponse = await checkCache(request);
+      if(cachedResponse){
+        console.log('Cached', cachedResponse);
+        return cachedResponse;
+      }else{
+        console.loog('not cached, checking network')
+        const newResponse = await fetch(request.url);
         
-//         console.log('Network request for ', event.request.url);
-        
-//         return fetch(event.request).then(response => {
-//           return caches.open(staticCacheName).then(cache => {
-//             cache.put(event.request.url, response.clone());
-//             return response;
-//           });
-//         });
+        if(response.status == 404){
+          return await caches.match('/404.html');
+        }
 
-//     }).catch(error => {
+        cacheResponse(request.url, newResponse);
+        return newResponse; 
+      }
 
-//       // TODO 6 - Respond with custom offline page
+    }catch(e){
+      //requesting a page offline that is not cached
+      console.log(e);
+      return await caches.match('/offline.html');
+    }
 
-//     })
-//   );
-// });
+}
+
+//Setting up runtime caching, resources not precached would be cached when requested
+self.addEventListener('fetch', event => {
+  console.log('Fetch event for ', event.request.url);
+  // Prevent the default, and handle the request ourselves.
+  event.respondWith(cacheFirstRequest(event.request));
+});
