@@ -1,6 +1,6 @@
 //Minimal Precaching & Runtime Caching ServiceWorker
 
-// https://developers.google.com/web/ilt/pwa/caching-files-with-service-worker
+//https://developers.google.com/web/ilt/pwa/caching-files-with-service-worker
 //https://developers.google.com/web/ilt/pwa/lab-caching-files-with-service-worker
 //https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent/respondWith
 //https://developer.mozilla.org/en-US/docs/Web/API/ExtendableEvent/waitUntil
@@ -11,25 +11,41 @@ const filesToCache = [
           '/manifest.json',
           '/icon_512.png',
           '/index.html',
-          '/offline.html'
+          '/offline.html',
+          '/404.html'
         ];
 
-const staticCacheName = 'pages-cache-v23';
+const staticCacheName = 'pages-cache-v15';
 
 //Setting up precaching
 self.addEventListener('install', async event => {
   console.log('Attempting to install service worker and cache static assets');
   
+  self.skipWaiting();
+
   //create preCache
-  const preCache = async () => {
+  const precache = async()=>{
     const cache = await caches.open(staticCacheName);
     return cache.addAll(filesToCache);
-  };
+  }
   
   //do not finish install until precaching is complete
-  event.waitUntil(preCache());
+  event.waitUntil(precache());
 });
 
+
+self.addEventListener('activate', event => {
+
+  const clearCaches = async ()=>{
+    const keys = await caches.keys();
+    const oldKeys = keys.filter(key => key !== staticCacheName);
+    const promises = oldKeys.map(key=>caches.delete(key));
+    return Promise.all(promises);
+  }
+
+  event.waitUntil(clearCaches());
+
+});
 
 //returns a cached response or undefined
 async function checkCache(request){
@@ -39,37 +55,35 @@ async function checkCache(request){
 //stores a response in cache
 async function cacheResponse(url, response){
   const cache = await caches.open(staticCacheName);
-  cache.put(url, response.clone());
+  cache.put(url, response);
 }
 
 //makes a fetch request but checks the cache first
 async function cacheFirstRequest(request){
 
-    try{
+  try{
       //requesting a page that is cached or app is online
-      const cachedResponse = await checkCache(request);
-      if(cachedResponse){
-        console.log('Cached', cachedResponse);
-        return cachedResponse;
-      }else{
-        console.log('not cached, checking network')
-        const newResponse = await fetch(request);
-        const clone = newResponse.clone();
+    const cachedResponse = await checkCache(request);
+    if(cachedResponse){
+    
+      return cachedResponse;
+    
+    }else{
+      
+      const newResponse = await fetch(request);
+      const clone = await newResponse.clone();
+      cacheResponse(request.url, clone);
 
-        console.log('Network Response', clone);
-        
-        if(clone.status == 404){
-          return await caches.match('/404.html');
-        }
-        cacheResponse(request.url, clone);
-        return newResponse; 
-      }
+      if(newResponse.status === 404)
+        return caches.match('/404.html');
 
-    }catch(e){
-      //requesting a page offline that is not cached
-      console.log('Error checking cache and network', e);
-      return await caches.match('/offline.html');
+      return newResponse; 
     }
+
+  }catch(e){
+    //requesting a page offline and is not cached
+    return caches.match('/offline.html');
+  }
 
 }
 
